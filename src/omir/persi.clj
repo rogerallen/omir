@@ -1,13 +1,11 @@
 (ns omir.persi
-  (:use [overtone.music.time :only [now]]
-        [overtone.libs.event :only [on-event remove-event-handler]])
-  (:require [persi.persi :as persi]
-            [quil.core   :as q]))
+  (:use [overtone.libs.event :only [on-event remove-event-handler]])
+  (:require [persi.persi :as persi]))
 
 ;; embrace & extend the persi library to handle live midi interaction
 
 ;; ======================================================================
-;; 10 seconds should be pretty decent
+;; 10 seconds should be a good default partition
 (def default-partition-threshold 10000000)
 
 ;; ======================================================================
@@ -86,6 +84,8 @@
 ;; FIXME?  Do I need to worry about note-on ... note-off pairs that go
 ;;   over threshold?  idea--count note-on as +, note-off as -.  Don't
 ;;   end unless sum is 0.
+;; This currently relies on keyboard timestamps & midi timestamps
+;; having a very different value.
 (defn partition-by-timestamp
   "create a lazy seq of event seqs partitioned when timestamp goes
   over a threshold.  timestamp is in µs."
@@ -102,82 +102,7 @@
                                       (= (:command %) :key-released)) a-list))
        the-partitioned-list))
 
-(defn make-notes
-  "convert a sequence of events into a sequence of notes with
-  duration.  NOTE! time is now 0 at the start of the sequence and this
-  changes timestamps from µs to ms."
-  [event-list0]
-  (let [ft (:timestamp (first (drop-while #(not= (:command %) :note-on) event-list0)))]
-    (loop [event-list event-list0 first-timestamp ft notes []]
-      (let [event-list   (drop-while #(not= (:command %) :note-on) event-list)
-            cur-note-on  (first event-list)
-            event-list   (rest event-list)
-            cur-note-off (first
-                          (drop-while
-                           #(or (= (:command %) :note-on)
-                                (not= (:note %) (:note cur-note-on))) event-list))]
-        (if (not (nil? cur-note-on))
-          (let [;;_ (println cur-note-on "\n" cur-note-off "\n")
-                cur-note {:command   :note
-                          :note      (:note cur-note-on)
-                          :velocity  (:velocity cur-note-on)
-                          :timestamp (/ (- (:timestamp cur-note-on) first-timestamp)
-                                        1000.0)
-                          :duration  (/ (- (:timestamp cur-note-off)
-                                           (:timestamp cur-note-on))
-                                        1000.0)}
-                notes (conj notes cur-note)]
-            (recur event-list first-timestamp notes))
-          notes)))))
-
 ;; ======================================================================
-;; keyboard events via a Quil window.  Had to do this because
-;; interacting with unbuffered keybaord events inside emacs is
-;; difficult/impossible.
-;;
-
-(defonce record-keyboard-keycount (atom 0))
-
-(defn- record-keyboard-setup
-  []
-  (reset! record-keyboard-keycount 0)
-  (q/background 255))
-
-(defn- record-keyboard-draw
-  "draws grey when a key is down"
-  []
-  (if (> @record-keyboard-keycount 0)
-    (q/background 128)
-    (q/background 255)))
-
-(defn- record-keyboard-key-pressed
-  "records the keycode and time in µs"
-  []
-  (swap! record-keyboard-keycount inc)
-  (append! {:command   :key-pressed
-            :keycode   (q/key-code)
-            :timestamp (* 1000 (now))}))
-
-(defn- record-keyboard-key-released
-  "records the keycode and time in µs"
-  []
-  (swap! record-keyboard-keycount dec)
-  (append! {:command   :key-released
-            :keycode   (q/key-code)
-            :timestamp (* 1000 (now))}))
-
-(defn record-keyboard-events
-  "bring up quil window that allows for recording keyboard events"
-  []
-  (q/defsketch keyboard-sketch
-    :title        "midi-persi-keys"
-    :setup        record-keyboard-setup
-    :draw         record-keyboard-draw
-    :key-pressed  record-keyboard-key-pressed
-    :key-released record-keyboard-key-released
-    :size         [128 128]
-    :features     [:keep-on-top]))
-
 (defn keyboard-tempo
   "look at the last partition's keyboard events and return the bpm.
   Timestamp expected in µs."
