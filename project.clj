@@ -6,5 +6,5 @@
   :dependencies [[org.clojure/clojure "1.6.0"]
                  [overtone            "0.9.1"]
                  [quil                "2.2.1"]
-                 [persi               "0.2.0"]]
+                 [persi               "0.2.1"]]
   :jvm-opts     ^:replace [] )
